@@ -7,7 +7,7 @@ import Register from "./pages/Register";
 
 // A minimal floating header for all pages except Landing
 import { Link } from "react-router-dom";
-import { Activity, LayoutDashboard, LogIn, GitMerge } from "lucide-react";
+import { Activity, LayoutDashboard, LogIn, GitMerge, Bell } from "lucide-react";
 
 function FloatingHeader() {
   return (
@@ -37,6 +37,9 @@ function FloatingHeader() {
         </Link>
         <Link to="/app/profile" className="flex-row gap-2" style={{ color: 'var(--text-muted)' }}>
           <Activity size={18} /> Explorer
+        </Link>
+        <Link to="/app/notifications" className="flex-row gap-2" style={{ color: 'var(--text-muted)' }}>
+          <Bell size={18} />
         </Link>
       </nav>
       <Link to="/login" className="flex-row gap-2 muted">
