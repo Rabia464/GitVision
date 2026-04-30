@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
-import { Bell, CheckCheck, AlertTriangle, RefreshCw, Inbox } from "lucide-react";
+import { Bell, CheckCheck, AlertTriangle, RefreshCw, Inbox, Lock } from "lucide-react";
 import client from "../api/client";
+import { useAuth } from "../context/AuthContext";
+import { Link } from "react-router-dom";
 
 export default function NotificationView() {
   const [notifications, setNotifications] = useState([]);
@@ -8,7 +10,7 @@ export default function NotificationView() {
   const [error, setError] = useState("");
   const [marking, setMarking] = useState(false);
 
-  const token = localStorage.getItem("gv_token");
+  const { isLoggedIn } = useAuth();
 
   const fetchNotifications = async () => {
     setLoading(true);
@@ -24,15 +26,15 @@ export default function NotificationView() {
   };
 
   useEffect(() => {
-    if (token) fetchNotifications();
-  }, [token]);
+    if (isLoggedIn) fetchNotifications();
+  }, [isLoggedIn]);
 
   const markAllRead = async () => {
     setMarking(true);
     try {
       // Mark each unread notification as read
       const unread = notifications.filter((n) => !n.is_read);
-      await Promise.all(unread.map((n) => client.patch(`/api/notifications/${n.notification_id}`, { is_read: true })));
+      await Promise.all(unread.map((n) => client.patch(`/api/notifications/${n.notification_id}/read`)));
       setNotifications((prev) => prev.map((n) => ({ ...n, is_read: true })));
     } catch {
       // silently handle
@@ -69,23 +71,15 @@ export default function NotificationView() {
         </div>
       </div>
 
-      {!token && (
-        <div className="glass-panel" style={{ textAlign: "center", padding: "3rem" }}>
-          <Bell size={48} className="muted" style={{ margin: "0 auto 1rem", display: "block" }} />
-          <h2>Login Required</h2>
-          <p className="muted">You must be logged in to view your notifications.</p>
-        </div>
-      )}
+      {isLoggedIn && loading && <div className="spinner mb-4" />}
 
-      {token && loading && <div className="spinner mb-4" />}
-
-      {token && error && (
+      {isLoggedIn && error && (
         <div className="flex-row gap-2 error" style={{ background: "rgba(239,68,68,0.1)", padding: "1rem", borderRadius: "8px", marginBottom: "1.5rem" }}>
           <AlertTriangle size={20} /> {error}
         </div>
       )}
 
-      {token && !loading && notifications.length === 0 && !error && (
+      {isLoggedIn && !loading && notifications.length === 0 && !error && (
         <div className="glass-panel" style={{ textAlign: "center", padding: "3rem" }}>
           <Inbox size={48} className="muted" style={{ margin: "0 auto 1rem", display: "block" }} />
           <h2 className="muted">All Caught Up</h2>

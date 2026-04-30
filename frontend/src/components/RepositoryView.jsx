@@ -1,8 +1,7 @@
 import { useEffect, useState } from "react";
 import { Database, Star, Code, ExternalLink, AlertTriangle, MessageSquare, Plus, X, Tag, Send, Loader } from "lucide-react";
 import client from "../api/client";
-
-const token = () => localStorage.getItem("gv_token");
+import { useAuth, useRequireAuth } from "../context/AuthContext";
 
 function CommentThread({ repoId }) {
   const [comments, setComments] = useState([]);
@@ -10,12 +9,14 @@ function CommentThread({ repoId }) {
   const [loading, setLoading] = useState(false);
   const [posting, setPosting] = useState(false);
   const [error, setError] = useState("");
+  const { isLoggedIn } = useAuth();
+  const requireAuth = useRequireAuth();
 
   useEffect(() => {
     const load = async () => {
       setLoading(true);
       try {
-        const res = await client.get(`/api/comments?repo_id=${repoId}`);
+        const res = await client.get(`/api/repos/${repoId}/comments`);
         setComments(res.data || []);
       } catch {
         setError("Could not load comments.");
@@ -26,19 +27,21 @@ function CommentThread({ repoId }) {
     load();
   }, [repoId]);
 
-  const handlePost = async () => {
-    if (!newComment.trim()) return;
-    setPosting(true);
-    try {
-      await client.post("/api/comments", { repo_id: repoId, content: newComment.trim() });
-      const res = await client.get(`/api/comments?repo_id=${repoId}`);
-      setComments(res.data || []);
-      setNewComment("");
-    } catch {
-      setError("Failed to post comment. Are you logged in?");
-    } finally {
-      setPosting(false);
-    }
+  const handlePost = () => {
+    requireAuth(async () => {
+      if (!newComment.trim()) return;
+      setPosting(true);
+      try {
+        await client.post(`/api/repos/${repoId}/comments`, { content: newComment.trim() });
+        const res = await client.get(`/api/repos/${repoId}/comments`);
+        setComments(res.data || []);
+        setNewComment("");
+      } catch {
+        setError("Failed to post comment.");
+      } finally {
+        setPosting(false);
+      }
+    });
   };
 
   return (
@@ -47,7 +50,7 @@ function CommentThread({ repoId }) {
       {error && <p className="error" style={{ fontSize: "0.85rem" }}>{error}</p>}
       <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem", marginBottom: "0.75rem", maxHeight: "150px", overflowY: "auto" }}>
         {comments.length === 0 && !loading && (
-          <p className="muted" style={{ fontSize: "0.8rem" }}>No comments yet.</p>
+          <p className="muted" style={{ fontSize: "0.8rem" }}>No comments yet. Be the first!</p>
         )}
         {comments.map((c) => (
           <div key={c.comment_id} style={{ background: "rgba(0,0,0,0.3)", borderRadius: "6px", padding: "0.5rem 0.75rem", fontSize: "0.85rem" }}>
@@ -56,20 +59,21 @@ function CommentThread({ repoId }) {
           </div>
         ))}
       </div>
-      {token() && (
-        <div style={{ display: "flex", gap: "0.5rem" }}>
-          <input
-            placeholder="Write a comment..."
-            value={newComment}
-            onChange={(e) => setNewComment(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && handlePost()}
-            style={{ flexGrow: 1, padding: "0.5rem 0.75rem", fontSize: "0.85rem" }}
-          />
-          <button className="btn-primary" onClick={handlePost} disabled={posting} style={{ padding: "0.5rem 0.75rem" }}>
-            {posting ? <Loader size={14} /> : <Send size={14} />}
-          </button>
-        </div>
-      )}
+      {/* Always show comment input — requireAuth handles redirect if not logged in */}
+      <div style={{ display: "flex", gap: "0.5rem" }}>
+        <input
+          placeholder={isLoggedIn ? "Write a comment..." : "Login to comment..."}
+          value={newComment}
+          onChange={(e) => setNewComment(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && handlePost()}
+          style={{ flexGrow: 1, padding: "0.5rem 0.75rem", fontSize: "0.85rem", cursor: isLoggedIn ? "text" : "pointer" }}
+          onClick={!isLoggedIn ? handlePost : undefined}
+          readOnly={!isLoggedIn}
+        />
+        <button className="btn-primary" onClick={handlePost} style={{ padding: "0.5rem 0.75rem" }}>
+          {posting ? <Loader size={14} /> : <Send size={14} />}
+        </button>
+      </div>
     </div>
   );
 }
@@ -79,25 +83,27 @@ function TagSection({ repoId, initialTags }) {
   const [newTag, setNewTag] = useState("");
   const [adding, setAdding] = useState(false);
   const [showInput, setShowInput] = useState(false);
+  const requireAuth = useRequireAuth();
 
-  const handleAdd = async () => {
-    if (!newTag.trim()) return;
-    setAdding(true);
-    try {
-      // Find or create tag then attach to repo
-      const res = await client.post("/api/tags", { tag_name: newTag.trim() });
-      const tagId = res.data?.tag_id;
-      if (tagId) {
-        await client.post(`/api/tags/${tagId}/repos`, { repo_id: repoId });
-        setTags((prev) => [...prev, { tag_id: tagId, tag_name: newTag.trim() }]);
+  const handleAdd = () => {
+    requireAuth(async () => {
+      if (!newTag.trim()) return;
+      setAdding(true);
+      try {
+        const res = await client.post("/api/tags", { tag_name: newTag.trim() });
+        const tagId = res.data?.tag_id;
+        if (tagId) {
+          await client.post(`/api/repos/${repoId}/tags/${tagId}`);
+          setTags((prev) => [...prev, { tag_id: tagId, tag_name: newTag.trim() }]);
+        }
+        setNewTag("");
+        setShowInput(false);
+      } catch {
+        // silently fail
+      } finally {
+        setAdding(false);
       }
-      setNewTag("");
-      setShowInput(false);
-    } catch {
-      // silently fail
-    } finally {
-      setAdding(false);
-    }
+    });
   };
 
   return (
@@ -110,15 +116,20 @@ function TagSection({ repoId, initialTags }) {
           #{t.tag_name}
         </span>
       ))}
-      {token() && !showInput && (
-        <button onClick={() => setShowInput(true)} style={{ background: "rgba(255,255,255,0.06)", border: "1px solid var(--border-color)", borderRadius: "20px", padding: "0.2rem 0.6rem", fontSize: "0.8rem", cursor: "pointer", color: "var(--text-muted)" }}>
+      {!showInput && (
+        <button
+          onClick={() => { setShowInput(true); }}
+          style={{ background: "rgba(255,255,255,0.06)", border: "1px solid var(--border-color)", borderRadius: "20px", padding: "0.2rem 0.6rem", fontSize: "0.8rem", cursor: "pointer", color: "var(--text-muted)" }}>
           <Plus size={12} style={{ display: "inline", marginRight: "2px" }} /> tag
         </button>
       )}
       {showInput && (
         <div className="flex-row gap-2">
-          <input value={newTag} onChange={(e) => setNewTag(e.target.value)} onKeyDown={(e) => e.key === "Enter" && handleAdd()}
-            placeholder="tag name..." style={{ width: "100px", padding: "0.2rem 0.6rem", fontSize: "0.8rem" }} />
+          <input value={newTag} onChange={(e) => setNewTag(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && handleAdd()}
+            placeholder="tag name..." style={{ width: "100px", padding: "0.2rem 0.6rem", fontSize: "0.8rem" }}
+            autoFocus
+          />
           <button className="btn-primary" onClick={handleAdd} disabled={adding} style={{ padding: "0.2rem 0.6rem", fontSize: "0.8rem" }}>
             {adding ? <Loader size={12} /> : "Add"}
           </button>
@@ -137,6 +148,7 @@ export default function RepositoryView({ username }) {
   const [error, setError] = useState("");
   const [starred, setStarred] = useState({});
   const [expandedComments, setExpandedComments] = useState({});
+  const requireAuth = useRequireAuth();
 
   useEffect(() => {
     if (!username) return;
@@ -155,19 +167,20 @@ export default function RepositoryView({ username }) {
     run();
   }, [username]);
 
-  const handleStar = async (repoId) => {
-    if (!token()) { return; }
-    try {
-      if (starred[repoId]) {
-        await client.delete(`/api/stars/${repoId}`);
-        setStarred((prev) => ({ ...prev, [repoId]: false }));
-      } else {
-        await client.post(`/api/stars`, { repo_id: repoId });
-        setStarred((prev) => ({ ...prev, [repoId]: true }));
+  const handleStar = (repoId) => {
+    requireAuth(async () => {
+      try {
+        if (starred[repoId]) {
+          await client.delete(`/api/repos/${repoId}/star`);
+          setStarred((prev) => ({ ...prev, [repoId]: false }));
+        } else {
+          await client.post(`/api/repos/${repoId}/star`);
+          setStarred((prev) => ({ ...prev, [repoId]: true }));
+        }
+      } catch {
+        // silently fail
       }
-    } catch {
-      // silently fail
-    }
+    });
   };
 
   const toggleComments = (repoId) => {
@@ -202,15 +215,16 @@ export default function RepositoryView({ username }) {
           <article className="glass-panel" key={repo.repo_id} style={{ display: "flex", flexDirection: "column", padding: "1.25rem" }}>
             <div className="flex-row gap-2" style={{ justifyContent: "space-between", marginBottom: "0.75rem" }}>
               <h3 style={{ fontSize: "1.1rem", margin: 0, color: "var(--text-main)" }}>{repo.repo_name}</h3>
-              {/* Star button */}
+              {/* Star button — always visible, requireAuth handles redirect */}
               <button
                 onClick={() => handleStar(repo.repo_id)}
-                title={token() ? "Star this repo" : "Login to star"}
+                title="Star this repo"
                 style={{
                   background: starred[repo.repo_id] ? "rgba(245, 158, 11, 0.15)" : "rgba(255,255,255,0.05)",
                   border: starred[repo.repo_id] ? "1px solid rgba(245,158,11,0.4)" : "1px solid var(--border-color)",
                   borderRadius: "8px", padding: "0.35rem 0.6rem",
-                  cursor: token() ? "pointer" : "not-allowed", color: "var(--accent-2)", display: "flex", alignItems: "center", gap: "4px"
+                  cursor: "pointer", color: "var(--accent-2)", display: "flex", alignItems: "center", gap: "4px",
+                  transition: "all 0.2s"
                 }}
               >
                 <Star size={14} fill={starred[repo.repo_id] ? "var(--accent-2)" : "none"} /> {repo.stars}
@@ -221,19 +235,17 @@ export default function RepositoryView({ username }) {
               {repo.description || "No description provided."}
             </p>
 
-            {/* Language badge */}
             <div className="flex-row gap-2 muted mb-2" style={{ fontSize: "0.85rem" }}>
               <Code size={14} /> {repo.language_name || "Unknown"}
             </div>
 
-            {/* Tags */}
             <TagSection repoId={repo.repo_id} initialTags={repo.tags || []} />
 
             <div className="flex-row gap-2" style={{ marginTop: "1rem" }}>
               {repo.github_url && (
                 <a href={repo.github_url} target="_blank" rel="noreferrer"
                   className="btn-secondary flex-row gap-2"
-                  style={{ justifyContent: "center", fontSize: "0.85rem", padding: "0.5rem 0.75rem", flex: 1 }}>
+                  style={{ justifyContent: "center", fontSize: "0.85rem", padding: "0.5rem 0.75rem", flex: 1, textDecoration: "none" }}>
                   Source <ExternalLink size={14} />
                 </a>
               )}

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
-import { User, Users, Star, BookOpen, AlertTriangle, Zap, Download } from "lucide-react";
+import { User, Users, Star, BookOpen, AlertTriangle, Zap } from "lucide-react";
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
+import { useRequireAuth } from "../context/AuthContext";
 import client from "../api/client";
 
 export default function ProfileView({ username }) {
@@ -11,6 +12,7 @@ export default function ProfileView({ username }) {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
+  const requireAuth = useRequireAuth();
 
   // Colors for the Pie Chart
   const COLORS = ['#ef4444', '#f59e0b', '#10b981', '#3b82f6', '#8b5cf6', '#ec4899'];
@@ -62,21 +64,24 @@ export default function ProfileView({ username }) {
     run();
   }, [username]);
 
-  const handleFollow = async () => {
-    if (!profile || !profile.user_id) return;
-    setActionLoading(true);
-    try {
-      if (isFollowing) {
-         // wait I will implement this in phase 2 fully
-      } else {
-         await client.post('/api/follow', { following_id: profile.user_id });
-         setIsFollowing(true);
+  const handleFollow = () => {
+    requireAuth(async () => {
+      if (!profile || !profile.user_id) return;
+      setActionLoading(true);
+      try {
+        if (isFollowing) {
+          await client.delete(`/api/users/${profile.user_id}/follow`);
+          setIsFollowing(false);
+        } else {
+          await client.post(`/api/users/${profile.user_id}/follow`);
+          setIsFollowing(true);
+        }
+      } catch (err) {
+        setError("Follow action failed.");
+      } finally {
+        setActionLoading(false);
       }
-    } catch (err) {
-       setError("Follow action failed. Ensure you are logged in.");
-    } finally {
-       setActionLoading(false);
-    }
+    });
   };
 
   if (!username) {

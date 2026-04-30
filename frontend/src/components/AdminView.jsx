@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { ShieldAlert, Activity, HardDrive, Monitor, RefreshCw, AlertTriangle, Clock, Lock } from "lucide-react";
 import client from "../api/client";
+import { useAuth } from "../context/AuthContext";
+import { Link } from "react-router-dom";
 
 function LogTable({ columns, rows, emptyMsg }) {
   if (!rows.length) return <p className="muted" style={{ padding: "1.5rem", textAlign: "center" }}>{emptyMsg}</p>;
@@ -43,10 +45,10 @@ export default function AdminView() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  const token = localStorage.getItem("gv_token");
+  const { isLoggedIn } = useAuth();
 
   const fetchData = async () => {
-    if (!token) return;
+    if (!isLoggedIn) return;
     setLoading(true);
     setError("");
     try {
@@ -66,8 +68,8 @@ export default function AdminView() {
   };
 
   useEffect(() => {
-    if (token) fetchData();
-  }, [token]);
+    if (isLoggedIn) fetchData();
+  }, [isLoggedIn]);
 
   const tabs = [
     { id: "activity", label: "Activity Log", icon: Activity, count: activityLogs.length },
@@ -116,21 +118,24 @@ export default function AdminView() {
         </button>
       </div>
 
-      {!token && (
+      {!isLoggedIn && (
         <div className="glass-panel" style={{ textAlign: "center", padding: "3rem" }}>
           <Lock size={48} className="muted" style={{ margin: "0 auto 1rem", display: "block" }} />
           <h2>Access Restricted</h2>
-          <p className="muted">You must be logged in to access the Admin Console.</p>
+          <p className="muted" style={{ marginBottom: "1.5rem" }}>You must be logged in to access the Admin Console.</p>
+          <Link to="/login?redirectTo=/app/admin" className="btn-primary" style={{ display: "inline-flex", gap: "0.5rem" }}>
+            <Lock size={16} /> Log In to Continue
+          </Link>
         </div>
       )}
 
-      {token && error && (
+      {isLoggedIn && error && (
         <div className="flex-row gap-2 error" style={{ background: "rgba(239,68,68,0.1)", padding: "1rem", borderRadius: "8px", marginBottom: "1.5rem" }}>
           <AlertTriangle size={20} /> {error}
         </div>
       )}
 
-      {token && (
+      {isLoggedIn && (
         <>
           {/* Tab Bar */}
           <div className="flex-row gap-2 mb-4" style={{ flexWrap: "wrap" }}>
